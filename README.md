@@ -1,56 +1,75 @@
-# Welcome to your Expo app 👋
+# Pogo — Fase 1 (adaptado a tu proyecto Expo Router)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Como ya tienes el proyecto creado con el template de Expo Router + TypeScript
+(y `expo-av` / `expo-speech` ya instalados), no hace falta instalar nada.
+Solo hay que agregar y reemplazar estos archivos.
 
-## Get started
+## 1. Archivos a agregar / reemplazar
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+pogo/
+└── src/
+    ├── app/
+    │   └── index.tsx                       (REEMPLAZA el que ya existe)
+    ├── components/
+    │   └── pogo/                           (carpeta nueva)
+    │       ├── talk-button.tsx             (nuevo)
+    │       └── conversation-log.tsx        (nuevo)
+    ├── constants/
+    │   └── pogo-theme.ts                   (nuevo, no toca tu theme.ts actual)
+    └── utils/                              (carpeta nueva)
+        ├── audio.ts                        (nuevo)
+        └── tts.ts                          (nuevo)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+No toqué `src/app/_layout.tsx` ni `src/app/explore.tsx` ni tu
+`src/constants/theme.ts` original - todo eso queda igual. El tab **Home**
+ahora muestra la interfaz de Pogo; el tab **Explore** lo dejamos tal cual
+por ahora (en una fase futura puede convertirse en el explorador de
+archivos).
 
-### Other setup steps
+## 2. Correr el proyecto
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Desde la carpeta raíz del proyecto:
 
-## Learn more
+```bash
+npx expo start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Escanea el QR con la app Expo Go en tu celular (Android) o con la Cámara
+(iPhone).
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## 3. Cómo usarlo
 
-## Join the community
+En el tab **Home**, mantén presionado el botón circular del centro y dile
+algo a Pogo. Al soltar, "piensa" un momento y responde confirmando cuánto
+grabó (todavía no entiende lo que dijiste - eso es la Fase 2).
 
-Join our community of developers creating universal apps.
+## 4. Nota sobre `expo-av`
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+`expo-av` está marcado como deprecado en versiones recientes de Expo a
+favor de `expo-audio`, pero como ya está en tu `package.json` y sigue
+funcionando en SDK 57, lo usamos por ahora para no meterte otra migración
+en medio de la Fase 1. Si más adelante da problemas o quieres adelantarte,
+lo migramos a `expo-audio` sin mucho esfuerzo (la lógica es casi igual).
+
+## 5. Si algo no funciona bien
+
+- **Error de import `@/...`:** confirma que tu `tsconfig.json` tiene
+  configurado el path alias `@/*` apuntando a `src/*` (ya debería estarlo,
+  porque los archivos originales del template ya lo usan así).
+- **No aparece el QR / error de conexión:** celular y computadora deben
+  estar en la misma red WiFi. Si tu red lo bloquea, usa
+  `npx expo start --tunnel`.
+- **No hay sonido en la respuesta:** revisa que el celular no esté en modo
+  silencio y que el volumen esté arriba.
+- **Pide permiso de micrófono y no reacciona:** cierra la app en el celular
+  y vuelve a escanear el QR.
+
+## 6. Qué sigue
+
+Fase 2: enviar el audio grabado a la API gratuita de Groq (transcripción) y
+el texto resultante a la API gratuita de Gemini (respuesta real), en vez
+del mensaje "placeholder" de esta fase.
+
+Prueba esta fase primero y cuéntame cómo te fue.
