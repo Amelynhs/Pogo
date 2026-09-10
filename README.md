@@ -1,75 +1,107 @@
-# Pogo — Fase 1 (adaptado a tu proyecto Expo Router)
+# Pogo — Fase 2
 
-Como ya tienes el proyecto creado con el template de Expo Router + TypeScript
-(y `expo-av` / `expo-speech` ya instalados), no hace falta instalar nada.
-Solo hay que agregar y reemplazar estos archivos.
+Asistente personal por voz, corriendo en Expo Go. Mantienes presionado el
+botón, hablas, y Pogo te entiende y te responde en voz alta.
 
-## 1. Archivos a agregar / reemplazar
+## Cómo funciona el ciclo
 
 ```
-pogo/
-└── src/
-    ├── app/
-    │   └── index.tsx                       (REEMPLAZA el que ya existe)
-    ├── components/
-    │   └── pogo/                           (carpeta nueva)
-    │       ├── talk-button.tsx             (nuevo)
-    │       └── conversation-log.tsx        (nuevo)
-    ├── constants/
-    │   └── pogo-theme.ts                   (nuevo, no toca tu theme.ts actual)
-    └── utils/                              (carpeta nueva)
-        ├── audio.ts                        (nuevo)
-        └── tts.ts                          (nuevo)
+mantienes presionado  →  expo-audio graba (.m4a)
+        ↓ sueltas
+Groq / Whisper transcribe lo que dijiste
+        ↓
+Gemini piensa la respuesta (con el historial de la charla)
+        ↓
+expo-speech la dice en voz alta
 ```
 
-No toqué `src/app/_layout.tsx` ni `src/app/explore.tsx` ni tu
-`src/constants/theme.ts` original - todo eso queda igual. El tab **Home**
-ahora muestra la interfaz de Pogo; el tab **Explore** lo dejamos tal cual
-por ahora (en una fase futura puede convertirse en el explorador de
-archivos).
+## Claves de API
 
-## 2. Correr el proyecto
+Las dos son gratis y no piden tarjeta:
 
-Desde la carpeta raíz del proyecto:
+| Servicio | Dónde sacarla | Para qué |
+|---|---|---|
+| Groq | https://console.groq.com → *API Keys* | Transcribir tu voz |
+| Gemini | https://aistudio.google.com/apikey | Pensar la respuesta |
+
+Van en un archivo `.env` en la raíz del proyecto:
+
+```
+EXPO_PUBLIC_GROQ_API_KEY=gsk_...
+EXPO_PUBLIC_GEMINI_API_KEY=AQ...
+```
+
+Ese archivo está en el `.gitignore`, así que no se sube a git. **Pero sí queda
+dentro del bundle de la app** — es la única forma de hacerlo sin un servidor
+propio. Son claves gratuitas y las puedes revocar y regenerar cuando quieras
+desde las mismas páginas de arriba.
+
+> Si editas el `.env`, reinicia con `npx expo start --clear`. El valor queda
+> incrustado en el bundle al compilarlo, así que un reinicio normal no lo
+> vuelve a leer.
+
+## Correr el proyecto
 
 ```bash
-npx expo start
+npm install
+npm start
 ```
 
-Escanea el QR con la app Expo Go en tu celular (Android) o con la Cámara
-(iPhone).
+Escanea el QR con Expo Go (Android) o con la Cámara (iPhone). Celular y
+computadora tienen que estar en la misma red WiFi; si tu red lo bloquea, usa
+`npm start -- --tunnel`.
 
-## 3. Cómo usarlo
+> **Puerto 8082, no el 8081.** En esta máquina hay otro proyecto ocupando el
+> puerto por defecto, así que los scripts de `npm` fijan el 8082. Si alguna vez
+> liberas el 8081, quita el `--port 8082` de `package.json`.
+>
+> Si el celular muestra una versión vieja de la app: no basta con recargar.
+> Cierra Expo Go del todo (deslízala fuera de las apps recientes) y vuelve a
+> entrar. Un bundle viejo cargado en memoria sobrevive a los reinicios del
+> servidor.
 
-En el tab **Home**, mantén presionado el botón circular del centro y dile
-algo a Pogo. Al soltar, "piensa" un momento y responde confirmando cuánto
-grabó (todavía no entiende lo que dijiste - eso es la Fase 2).
+## Estructura
 
-## 4. Nota sobre `expo-av`
+```
+src/
+├── app/
+│   └── index.tsx          pantalla principal, orquesta el ciclo completo
+├── components/pogo/
+│   ├── talk-button.tsx    botón de mantener presionado
+│   └── conversation-log.tsx
+├── constants/
+│   └── pogo-theme.ts      paleta gris oscura fija
+└── utils/
+    ├── audio.ts           grabación (hook usePogoRecorder, sobre expo-audio)
+    ├── stt.ts             transcripción con Groq
+    ├── llm.ts             respuestas con Gemini + historial de la sesión
+    ├── tts.ts             voz de Pogo (expo-speech)
+    ├── config.ts          lectura de las claves
+    └── errors.ts          PogoError: errores que Pogo dice en voz alta
+```
 
-`expo-av` está marcado como deprecado en versiones recientes de Expo a
-favor de `expo-audio`, pero como ya está en tu `package.json` y sigue
-funcionando en SDK 57, lo usamos por ahora para no meterte otra migración
-en medio de la Fase 1. Si más adelante da problemas o quieres adelantarte,
-lo migramos a `expo-audio` sin mucho esfuerzo (la lógica es casi igual).
+## Detalles que importan
 
-## 5. Si algo no funciona bien
+- **Memoria:** Pogo recuerda la conversación mientras la app esté abierta. Se
+  borra al cerrarla. Guardar conversaciones en disco es de una fase posterior.
+- **Velocidad:** Gemini corre con `thinking_level: "low"`. Medido, baja la
+  respuesta de unos 5 segundos a unos 2.5. En una app de voz se nota mucho.
+- **Errores:** si se cae el internet, una clave es inválida o se acaba la
+  cuota, Pogo lo dice hablado con un mensaje entendible en vez de trabarse.
 
-- **Error de import `@/...`:** confirma que tu `tsconfig.json` tiene
-  configurado el path alias `@/*` apuntando a `src/*` (ya debería estarlo,
-  porque los archivos originales del template ya lo usan así).
-- **No aparece el QR / error de conexión:** celular y computadora deben
-  estar en la misma red WiFi. Si tu red lo bloquea, usa
-  `npx expo start --tunnel`.
-- **No hay sonido en la respuesta:** revisa que el celular no esté en modo
-  silencio y que el volumen esté arriba.
-- **Pide permiso de micrófono y no reacciona:** cierra la app en el celular
-  y vuelve a escanear el QR.
+## Si algo no funciona
 
-## 6. Qué sigue
+- **"No tengo configurada mi clave..."** → falta el `.env` o falta reiniciar
+  con `--clear`.
+- **"Mi clave no es válida"** → revisa que la copiaste completa, sin espacios.
+- **"Se me acabó la cuota"** → capa gratuita agotada; espera un rato.
+- **No hay sonido** → revisa que el celular no esté en silencio.
+- **`Unsupported FormDataPart implementation`** → alguien volvió a subir un
+  archivo con el objeto `{uri, name, type}` de React Native. Desde el SDK 54 el
+  `fetch` de Expo no lo acepta: hay que pasar un `File` de `expo-file-system`
+  (ver [src/utils/stt.ts](src/utils/stt.ts)).
 
-Fase 2: enviar el audio grabado a la API gratuita de Groq (transcripción) y
-el texto resultante a la API gratuita de Gemini (respuesta real), en vez
-del mensaje "placeholder" de esta fase.
+## Qué sigue
 
-Prueba esta fase primero y cuéntame cómo te fue.
+Fase 3: importar archivos al celular (PDFs, Word, imágenes) etiquetados por
+ámbito de vida, guardados localmente.

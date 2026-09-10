@@ -29,7 +29,7 @@ piezas se resuelven distinto:
 | Componente | Herramienta | Costo |
 |---|---|---|
 | Framework | React Native + Expo (JavaScript), corre en Expo Go | Gratis |
-| Grabación de audio | `expo-av` (nativo de Expo, funciona en Expo Go) | Gratis |
+| Grabación de audio | `expo-audio` (nativo de Expo, funciona en Expo Go; reemplaza a `expo-av`, eliminado del SDK 54+) | Gratis |
 | Transcripción de voz | API de Groq (Whisper) | Gratis (capa gratuita) |
 | Cerebro / modelo de lenguaje | API de Gemini (Google AI Studio) | Gratis (capa gratuita) |
 | Voz de Pogo | `expo-speech` | Gratis |

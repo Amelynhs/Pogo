@@ -1,29 +1,53 @@
 // src/app/index.tsx
-// Pogo - Fase 1 (tab Home)
+// Pogo - Fase 2 (tab Home)
 // -------------------------
-// Botón de "mantén presionado para hablar", grabación de audio y una
-// respuesta hablada de confirmación. Todavía SIN transcripción real ni
-// modelo de lenguaje (eso es la Fase 2).
+// Ciclo completo: mantienes presionado y hablas -> se graba -> Groq transcribe
+// lo que dijiste -> Gemini piensa la respuesta con el historial de la charla ->
+// Pogo la muestra y la dice en voz alta.
 
-import React, { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConversationLog, type PogoMessage } from '@/components/pogo/conversation-log';
 import { TalkButton, type PogoState } from '@/components/pogo/talk-button';
 import { PogoColors, PogoSpacing, PogoTypography } from '@/constants/pogo-theme';
-import { requestMicPermission, startRecording, stopRecording } from '@/utils/audio';
+import { usePogoRecorder } from '@/utils/audio';
+import { PogoError } from '@/utils/errors';
+import { askPogo, userStep, type ConversationStep } from '@/utils/llm';
+import { transcribe } from '@/utils/stt';
 import { speak } from '@/utils/tts';
 
+// Grabaciones más cortas que esto son botonazos sin querer, no habla.
+const MIN_RECORDING_MS = 400;
+
 export default function HomeScreen() {
+  const { requestMicPermission, startRecording, stopRecording } = usePogoRecorder();
   const [state, setState] = useState<PogoState>('idle');
   const [messages, setMessages] = useState<PogoMessage[]>([]);
   const nextId = useRef(0);
+
+  // El historial vive en un ref, no en estado: cambia en medio de una petición
+  // y no necesita provocar re-render. Se pierde al cerrar la app, a propósito.
+  const history = useRef<ConversationStep[]>([]);
 
   const addMessage = useCallback((from: PogoMessage['from'], text: string) => {
     nextId.current += 1;
     setMessages((prev) => [...prev, { id: nextId.current, from, text }]);
   }, []);
+
+  /** Muestra el mensaje y lo dice en voz alta, dejando el estado en 'idle' al terminar. */
+  const reply = useCallback(
+    (text: string) => {
+      addMessage('pogo', text);
+      setState('speaking');
+      speak(text, {
+        onDone: () => setState('idle'),
+        onError: () => setState('idle'),
+      });
+    },
+    [addMessage]
+  );
 
   const handlePressIn = useCallback(async () => {
     const granted = await requestMicPermission();
@@ -41,46 +65,47 @@ export default function HomeScreen() {
       console.log('Error al iniciar grabación:', error);
       Alert.alert('Error', 'No pude empezar a grabar. Intenta de nuevo.');
     }
-  }, []);
+  }, [requestMicPermission, startRecording]);
 
   const handlePressOut = useCallback(async () => {
     setState('thinking');
     try {
-      const result = await stopRecording();
+      const recorded = await stopRecording();
 
-      if (!result || !result.durationMillis || result.durationMillis < 400) {
-        addMessage('pogo', 'No alcancé a grabar nada, mantén el botón presionado mientras hablas.');
-        setState('idle');
+      if (!recorded?.uri || !recorded.durationMillis || recorded.durationMillis < MIN_RECORDING_MS) {
+        reply('No alcancé a grabar nada, mantén el botón presionado mientras hablas.');
         return;
       }
 
-      const seconds = (result.durationMillis / 1000).toFixed(1);
-      addMessage('user', `[Audio grabado - ${seconds}s]`);
+      const transcript = await transcribe(recorded.uri);
+      if (!transcript) {
+        reply('No te entendí, ¿me lo repites?');
+        return;
+      }
+      addMessage('user', transcript);
 
-      // Fase 1: todavía no transcribimos ni pensamos una respuesta real.
-      // En la Fase 2 aquí se envía result.uri a Groq (transcripción) y
-      // luego el texto a Gemini (respuesta).
-      const placeholderReply = `Grabé tu mensaje de ${seconds} segundos. Todavía no puedo entender lo que dijiste - eso lo agregamos en la próxima fase.`;
+      history.current = [...history.current, userStep(transcript)];
+      const answer = await askPogo(history.current);
+      history.current = [...history.current, ...answer.steps];
 
-      addMessage('pogo', placeholderReply);
-      setState('speaking');
-      speak(placeholderReply, {
-        onDone: () => setState('idle'),
-        onError: () => setState('idle'),
-      });
+      reply(answer.reply);
     } catch (error) {
-      console.log('Error al detener grabación:', error);
-      addMessage('pogo', 'Tuve un problema procesando el audio, intenta de nuevo.');
-      setState('idle');
+      // Los PogoError ya traen un mensaje pensado para decirse en voz alta.
+      if (error instanceof PogoError) {
+        reply(error.message);
+        return;
+      }
+      console.log('Error inesperado en el ciclo de voz:', error);
+      reply('Algo se me rompió por dentro. Intenta de nuevo.');
     }
-  }, [addMessage]);
+  }, [addMessage, reply, stopRecording]);
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Text style={styles.title}>Pogo</Text>
-          <Text style={styles.subtitle}>Fase 1 · ciclo básico de voz</Text>
+          <Text style={styles.subtitle}>Fase 2 · escucha, piensa y responde</Text>
         </View>
 
         <ConversationLog messages={messages} />

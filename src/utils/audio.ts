@@ -1,40 +1,54 @@
 // src/utils/audio.ts
-// Manejo de grabación de audio usando expo-av (ya está en tus dependencias).
+// Grabación de audio con expo-audio.
+//
+// Nota: `expo-av` fue eliminado del SDK de Expo a partir de la versión 54,
+// por eso Expo Go ya no trae el módulo nativo `ExponentAV`. El reemplazo
+// oficial para grabar/reproducir audio es `expo-audio`, cuya API se basa en
+// hooks, así que este archivo expone un hook en vez de funciones sueltas.
 
-import { Audio } from 'expo-av';
-
-let recording: Audio.Recording | null = null;
-
-export async function requestMicPermission(): Promise<boolean> {
-  const { status } = await Audio.requestPermissionsAsync();
-  return status === 'granted';
-}
-
-export async function startRecording(): Promise<void> {
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-  });
-
-  const { recording: newRecording } = await Audio.Recording.createAsync(
-    Audio.RecordingOptionsPresets.HIGH_QUALITY
-  );
-  recording = newRecording;
-}
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
+import { useCallback } from 'react';
 
 export type StopRecordingResult = {
   uri: string | null;
   durationMillis: number | null;
 };
 
-export async function stopRecording(): Promise<StopRecordingResult | null> {
-  if (!recording) return null;
+export function usePogoRecorder() {
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
-  await recording.stopAndUnloadAsync();
-  const uri = recording.getURI();
-  const status = await recording.getStatusAsync().catch(() => null);
-  const durationMillis = status?.durationMillis ?? null;
+  const requestMicPermission = useCallback(async (): Promise<boolean> => {
+    const permission = await AudioModule.requestRecordingPermissionsAsync();
+    return permission.granted;
+  }, []);
 
-  recording = null;
-  return { uri, durationMillis };
+  const startRecording = useCallback(async (): Promise<void> => {
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+    });
+
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+  }, [recorder]);
+
+  const stopRecording = useCallback(async (): Promise<StopRecordingResult | null> => {
+    if (!recorder.isRecording) return null;
+
+    // El estado hay que leerlo ANTES de parar: al detenerse la duración
+    // vuelve a cero.
+    const { durationMillis } = recorder.getStatus();
+    await recorder.stop();
+
+    // Salimos del modo grabación. Si no, en iOS la voz de Pogo sale por el
+    // auricular (muy bajito) en vez del altavoz.
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+    });
+
+    return { uri: recorder.uri, durationMillis: durationMillis ?? null };
+  }, [recorder]);
+
+  return { requestMicPermission, startRecording, stopRecording };
 }
