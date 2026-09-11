@@ -3,7 +3,7 @@
 
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -26,7 +26,13 @@ export default function SettingsScreen() {
   // null = cerrado. Un Scope = editando ese. 'new' = creando uno.
   const [editing, setEditing] = useState<Scope | 'new' | null>(null);
   const [draftName, setDraftName] = useState('');
+  // saving (estado) es solo para la UI ("Guardar" deshabilitado). El guard
+  // real contra el doble tap es savingRef: un ref se lee/escribe en el
+  // acto, sin esperar a un render, asi que dos toques que lleguen a la
+  // misma closure (doble tap real, antes de que React vuelva a renderizar)
+  // ven igual el valor vivo, no uno capturado y desactualizado.
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     setScopes(await listScopes(db));
@@ -48,7 +54,8 @@ export default function SettingsScreen() {
   }, []);
 
   const save = useCallback(async () => {
-    if (!editing || saving) return;
+    if (!editing || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       if (editing === 'new') {
@@ -61,9 +68,10 @@ export default function SettingsScreen() {
     } catch (error) {
       Alert.alert('No pude guardar', (error as Error).message);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
-  }, [db, draftName, editing, refresh, saving]);
+  }, [db, draftName, editing, refresh]);
 
   const confirmDelete = useCallback(() => {
     if (!editing || editing === 'new') return;
