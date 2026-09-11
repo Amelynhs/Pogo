@@ -15,6 +15,12 @@ export type TestDb = Db & { close(): void };
 export function createTestDb(): TestDb {
   const raw = new DatabaseSync(':memory:');
 
+  // node:sqlite deja foreign_keys en ON por defecto; la SQLite real (y por lo
+  // tanto expo-sqlite en el dispositivo) lo deja en OFF. Lo apagamos aqui para
+  // que la unica fuente de "ON" sea el PRAGMA de migrate(), y asi las pruebas
+  // realmente comprueben que ese PRAGMA se ejecuta.
+  raw.exec('PRAGMA foreign_keys = OFF');
+
   return {
     async execAsync(sql: string) {
       raw.exec(sql);
