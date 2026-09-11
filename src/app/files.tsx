@@ -2,17 +2,20 @@
 // Pantalla Archivos: lista filtrable por ambito.
 // El boton de importar y las acciones llegan en las tareas 8 y 9.
 
+import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FileFormSheet } from '@/components/pogo/file-form-sheet';
 import { FileRow } from '@/components/pogo/file-row';
 import { ScopeChips, type ScopeSelection } from '@/components/pogo/scope-chips';
 import { PogoColors, PogoSpacing, PogoTypography } from '@/constants/pogo-theme';
-import { hasUnscopedFiles, listFiles, type StoredFile } from '@/data/files';
-import { listScopes, type Scope } from '@/data/scopes';
+import { addFile, hasUnscopedFiles, listFiles, type StoredFile } from '@/data/files';
+import { createScope, listScopes, type Scope } from '@/data/scopes';
+import { removeFromLibrary, saveToLibrary } from '@/data/storage';
 
 export default function FilesScreen() {
   const db = useSQLiteContext();
@@ -20,6 +23,14 @@ export default function FilesScreen() {
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [showUnscoped, setShowUnscoped] = useState(false);
   const [selected, setSelected] = useState<ScopeSelection>(undefined);
+
+  // El archivo que el selector devolvio y todavia no se ha guardado.
+  const [picked, setPicked] = useState<{
+    uri: string;
+    name: string;
+    mimeType?: string;
+    size?: number;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     setScopes(await listScopes(db));
@@ -35,10 +46,69 @@ export default function FilesScreen() {
     }, [refresh])
   );
 
+  const pickFile = useCallback(async () => {
+    let result: DocumentPicker.DocumentPickerResult;
+    try {
+      result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+    } catch (error) {
+      Alert.alert('No pude abrir el selector de archivos', (error as Error).message);
+      return;
+    }
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    setPicked({
+      uri: asset.uri,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      size: asset.size,
+    });
+  }, []);
+
+  const saveImported = useCallback(
+    async (meta: { title: string; scopeId: number | null }) => {
+      if (!picked) return;
+
+      // La copia va primero. Si la insercion falla despues, se borra el
+      // archivo copiado para no dejar basura sin registrar.
+      const diskName = await saveToLibrary(picked.uri, picked.name);
+      try {
+        await addFile(db, {
+          title: meta.title,
+          diskName,
+          mimeType: picked.mimeType ?? null,
+          size: picked.size ?? null,
+          scopeId: meta.scopeId,
+        });
+      } catch (error) {
+        removeFromLibrary(diskName);
+        throw error;
+      }
+
+      setPicked(null);
+      await refresh();
+    },
+    [db, picked, refresh]
+  );
+
+  const addScopeInline = useCallback(
+    async (name: string) => {
+      const created = await createScope(db, name);
+      setScopes(await listScopes(db));
+      return created;
+    },
+    [db]
+  );
+
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Text style={styles.title}>Archivos</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Archivos</Text>
+          <Pressable onPress={pickFile} accessibilityLabel="Importar un archivo">
+            <Text style={styles.plus}>+</Text>
+          </Pressable>
+        </View>
 
         <ScopeChips
           scopes={scopes}
@@ -60,6 +130,17 @@ export default function FilesScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      <FileFormSheet
+        visible={picked !== null}
+        heading="Guardar archivo"
+        initialTitle={picked?.name ?? ''}
+        initialScopeId={null}
+        scopes={scopes}
+        onCancel={() => setPicked(null)}
+        onSave={saveImported}
+        onCreateScope={addScopeInline}
+      />
     </View>
   );
 }
@@ -67,12 +148,18 @@ export default function FilesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PogoColors.background },
   safeArea: { flex: 1 },
-  title: {
-    ...PogoTypography.title,
-    color: PogoColors.textPrimary,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: PogoSpacing.lg,
     paddingTop: PogoSpacing.md,
   },
+  title: {
+    ...PogoTypography.title,
+    color: PogoColors.textPrimary,
+  },
+  plus: { fontSize: 32, color: PogoColors.textPrimary, lineHeight: 36 },
   list: { padding: PogoSpacing.md, gap: PogoSpacing.sm },
   empty: {
     ...PogoTypography.body,
