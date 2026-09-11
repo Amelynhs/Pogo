@@ -1,8 +1,9 @@
 // src/app/settings.tsx
 // Ajustes. Por ahora solo gestiona los ambitos de vida.
 
+import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -25,14 +26,21 @@ export default function SettingsScreen() {
   // null = cerrado. Un Scope = editando ese. 'new' = creando uno.
   const [editing, setEditing] = useState<Scope | 'new' | null>(null);
   const [draftName, setDraftName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     setScopes(await listScopes(db));
   }, [db]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Se recarga cada vez que la pantalla vuelve a tener foco (no solo al
+  // montar), porque las pestañas se quedan montadas: si se importan
+  // archivos en un ambito desde otra pestaña y se vuelve a Ajustes, los
+  // conteos por ambito deben reflejar eso, no quedarse con el valor viejo.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   const openEditor = useCallback((target: Scope | 'new') => {
     setEditing(target);
@@ -40,7 +48,8 @@ export default function SettingsScreen() {
   }, []);
 
   const save = useCallback(async () => {
-    if (!editing) return;
+    if (!editing || saving) return;
+    setSaving(true);
     try {
       if (editing === 'new') {
         await createScope(db, draftName);
@@ -51,8 +60,10 @@ export default function SettingsScreen() {
       await refresh();
     } catch (error) {
       Alert.alert('No pude guardar', (error as Error).message);
+    } finally {
+      setSaving(false);
     }
-  }, [db, draftName, editing, refresh]);
+  }, [db, draftName, editing, refresh, saving]);
 
   const confirmDelete = useCallback(() => {
     if (!editing || editing === 'new') return;
@@ -112,7 +123,11 @@ export default function SettingsScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      <Modal visible={editing !== null} transparent animationType="fade">
+      <Modal
+        visible={editing !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditing(null)}>
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>
@@ -142,7 +157,7 @@ export default function SettingsScreen() {
                 </Pressable>
               )}
 
-              <Pressable onPress={save}>
+              <Pressable onPress={save} disabled={saving}>
                 <Text style={[styles.actionText, styles.primary]}>Guardar</Text>
               </Pressable>
             </View>
