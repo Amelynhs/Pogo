@@ -13,7 +13,12 @@ const LIBRARY_FOLDER = 'library';
 function libraryDirectory(): Directory {
   const directory = new Directory(Paths.document, LIBRARY_FOLDER);
   if (!directory.exists) {
-    directory.create({ intermediates: true });
+    try {
+      directory.create({ intermediates: true });
+    } catch (error) {
+      console.log('Storage - fallo creando la carpeta de la biblioteca:', error);
+      throw new Error('No pude preparar el almacenamiento del teléfono para guardar archivos.');
+    }
   }
   return directory;
 }
@@ -42,8 +47,22 @@ export async function saveToLibrary(sourceUri: string, originalName: string): Pr
 
   const extension = source.extension || extensionOf(originalName);
   const diskName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`;
+  const destination = new File(libraryDirectory(), diskName);
 
-  await source.copy(new File(libraryDirectory(), diskName));
+  try {
+    await source.copy(destination);
+  } catch (error) {
+    console.log('Storage - fallo copiando el archivo a la biblioteca:', error);
+    try {
+      if (destination.exists) {
+        destination.delete();
+      }
+    } catch (cleanupError) {
+      console.log('Storage - fallo limpiando la copia parcial:', cleanupError);
+    }
+    throw new Error('No pude guardar el archivo. Puede que no haya espacio suficiente en el teléfono.');
+  }
+
   return diskName;
 }
 
