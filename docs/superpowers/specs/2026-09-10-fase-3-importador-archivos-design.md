@@ -249,11 +249,19 @@ sentido que Pogo diga el error en voz alta.
 `jest-expo` **simula** los módulos nativos del SDK, así que probar `expo-sqlite`
 a través de él no probaría SQL real. Por eso los módulos de `data/` reciben la
 base como parámetro (`Db`): en la app se les pasa el `SQLiteDatabase` de
-expo-sqlite, y en las pruebas un adaptador delgado sobre `node:sqlite`
-(incorporado en Node 22+; aquí corre Node 24). SQL real, cero simulacros.
+expo-sqlite, y en las pruebas un adaptador delgado sobre `node:sqlite`.
 
-Verificado que `node:sqlite` ejecuta el esquema y respeta `ON DELETE SET NULL`
-y `UNIQUE`.
+Con eso, Jest deja de hacer falta: **no se instala ninguna dependencia de
+pruebas**. Node 24 ejecuta archivos TypeScript sin transpilar y trae tanto el
+runner (`node --test`) como SQLite (`node:sqlite`, desde Node 22). El comando
+es `npm test`.
+
+Verificado en esta máquina: `node --test` ejecuta un `.test.ts` que usa
+`node:sqlite`, y el esquema respeta `ON DELETE SET NULL` y `UNIQUE`.
+
+La contrapartida es que no se pueden probar componentes de React con este
+enfoque. No importa: la especificación ya establece que las pantallas se
+verifican a mano en Expo Go.
 
 Qué se prueba:
 
