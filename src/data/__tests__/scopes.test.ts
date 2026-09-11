@@ -103,3 +103,30 @@ test('deleteScope borra el ambito pero conserva sus archivos', async () => {
   assert.equal(file?.title, 'Marcha');
   assert.equal(file?.scope_id, null);
 });
+
+test('createScope rechaza un duplicado de una letra acentuada con mayuscula diferente', async () => {
+  const db = await freshDb();
+  await createScope(db, 'Música');
+  await assert.rejects(() => createScope(db, 'MÚSICA'), /ya tienes/i);
+});
+
+test('createScope permite nombres que difieren solo por el acento', async () => {
+  const db = await freshDb();
+  await createScope(db, 'musica');
+  const scope2 = await createScope(db, 'música');
+
+  const scopes = await listScopes(db);
+  assert.equal(scopes.length, 2);
+  assert.ok(scopes.some((s) => s.name === 'musica'));
+  assert.ok(scopes.some((s) => s.name === 'música'));
+});
+
+test('listScopes ordena nombres acentuados en su posicion alfabetica espanola', async () => {
+  const db = await freshDb();
+  await createScope(db, 'universidad');
+  await createScope(db, 'Época');
+  await createScope(db, 'banda');
+
+  const scopes = await listScopes(db);
+  assert.deepEqual(scopes.map((s) => s.name), ['banda', 'Época', 'universidad']);
+});

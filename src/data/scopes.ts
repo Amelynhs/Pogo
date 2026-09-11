@@ -13,22 +13,26 @@ export type Scope = {
 type ScopeRow = { id: number; name: string; file_count: number };
 
 /**
+ * Pliega mayusculas a minusculas con la collation de español.
+ * SQLite NOCASE no funciona con acentos, asi que lo hacemos en JS.
+ */
+function foldCase(name: string): string {
+  return name.trim().toLocaleLowerCase('es');
+}
+
+/**
  * Comprueba que no exista ya un ambito con ese nombre.
  *
  * El UNIQUE de SQLite distingue mayusculas, asi que "Banda" y "banda"
  * pasarian los dos. Para la usuaria son el mismo ambito, asi que lo
- * comparamos sin distinguir.
+ * comparamos sin distinguir. Usamos JavaScript para la collation porque
+ * SQLite NOCASE no maneja acentos.
  */
 async function ensureNameIsFree(db: Db, name: string, exceptId?: number): Promise<void> {
-  const clash = exceptId
-    ? await db.getFirstAsync<{ id: number }>(
-        'SELECT id FROM scopes WHERE name = ? COLLATE NOCASE AND id <> ?',
-        [name, exceptId]
-      )
-    : await db.getFirstAsync<{ id: number }>(
-        'SELECT id FROM scopes WHERE name = ? COLLATE NOCASE',
-        [name]
-      );
+  const folded = foldCase(name);
+  const scopes = await db.getAllAsync<{ id: number; name: string }>('SELECT id, name FROM scopes');
+
+  const clash = scopes.find((s) => foldCase(s.name) === folded && s.id !== (exceptId ?? -1));
 
   if (clash) throw new Error(`Ya tienes un ámbito llamado "${name}".`);
 }
@@ -46,10 +50,11 @@ export async function listScopes(db: Db): Promise<Scope[]> {
     FROM scopes s
     LEFT JOIN files f ON f.scope_id = s.id
     GROUP BY s.id, s.name
-    ORDER BY s.name COLLATE NOCASE
   `);
 
-  return rows.map((row) => ({ id: row.id, name: row.name, fileCount: row.file_count }));
+  const scopes = rows.map((row) => ({ id: row.id, name: row.name, fileCount: row.file_count }));
+  scopes.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return scopes;
 }
 
 export async function createScope(db: Db, name: string): Promise<Scope> {
