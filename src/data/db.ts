@@ -8,15 +8,23 @@
 export const DATABASE_NAME = 'pogo.db';
 export const DATABASE_VERSION = 1;
 
+/**
+ * Lo que SQLite puede enlazar como parametro de una consulta. Refleja
+ * SQLiteBindValue de expo-sqlite (ver node_modules/expo-sqlite/build/
+ * NativeStatement.d.ts) sin importarlo, para que este modulo siga sin
+ * depender de nada.
+ */
+type DbBindValue = string | number | null | boolean | Uint8Array | ArrayBuffer;
+
 /** Lo minimo que la capa de datos necesita de una base de datos. */
 export type Db = {
   execAsync(sql: string): Promise<void>;
   runAsync(
     sql: string,
-    params?: unknown[]
+    params: DbBindValue[]
   ): Promise<{ lastInsertRowId: number; changes: number }>;
-  getAllAsync<T>(sql: string, params?: unknown[]): Promise<T[]>;
-  getFirstAsync<T>(sql: string, params?: unknown[]): Promise<T | null>;
+  getAllAsync<T>(sql: string, params: DbBindValue[]): Promise<T[]>;
+  getFirstAsync<T>(sql: string, params: DbBindValue[]): Promise<T | null>;
 };
 
 const SCHEMA_V1 = `
@@ -48,7 +56,7 @@ export async function migrate(db: Db): Promise<void> {
   // en cada apertura. Sin esto, ON DELETE SET NULL no se aplica.
   await db.execAsync('PRAGMA foreign_keys = ON');
 
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
   const currentVersion = row?.user_version ?? 0;
   if (currentVersion >= DATABASE_VERSION) return;
 

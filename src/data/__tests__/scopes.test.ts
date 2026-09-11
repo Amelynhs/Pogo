@@ -10,7 +10,7 @@ import { createTestDb, type TestDb } from './test-db.ts';
 async function freshDb(): Promise<TestDb> {
   const db = createTestDb();
   await migrate(db);
-  await db.runAsync('DELETE FROM scopes');
+  await db.runAsync('DELETE FROM scopes', []);
   return db;
 }
 
@@ -98,7 +98,8 @@ test('deleteScope borra el ambito pero conserva sus archivos', async () => {
 
   assert.equal((await listScopes(db)).length, 0);
   const file = await db.getFirstAsync<{ title: string; scope_id: number | null }>(
-    'SELECT title, scope_id FROM files'
+    'SELECT title, scope_id FROM files',
+    []
   );
   assert.equal(file?.title, 'Marcha');
   assert.equal(file?.scope_id, null);

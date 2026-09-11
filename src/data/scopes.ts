@@ -30,7 +30,10 @@ function foldCase(name: string): string {
  */
 async function ensureNameIsFree(db: Db, name: string, exceptId?: number): Promise<void> {
   const folded = foldCase(name);
-  const scopes = await db.getAllAsync<{ id: number; name: string }>('SELECT id, name FROM scopes');
+  const scopes = await db.getAllAsync<{ id: number; name: string }>(
+    'SELECT id, name FROM scopes',
+    []
+  );
 
   const clash = scopes.find((s) => foldCase(s.name) === folded && s.id !== (exceptId ?? -1));
 
@@ -45,12 +48,15 @@ function cleanName(name: string): string {
 
 /** Ambitos ordenados alfabeticamente, con cuantos archivos tiene cada uno. */
 export async function listScopes(db: Db): Promise<Scope[]> {
-  const rows = await db.getAllAsync<ScopeRow>(`
+  const rows = await db.getAllAsync<ScopeRow>(
+    `
     SELECT s.id, s.name, COUNT(f.id) AS file_count
     FROM scopes s
     LEFT JOIN files f ON f.scope_id = s.id
     GROUP BY s.id, s.name
-  `);
+  `,
+    []
+  );
 
   const scopes = rows.map((row) => ({ id: row.id, name: row.name, fileCount: row.file_count }));
   scopes.sort((a, b) => a.name.localeCompare(b.name, 'es'));

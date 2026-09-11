@@ -18,7 +18,7 @@ import { createTestDb, type TestDb } from './test-db.ts';
 async function freshDb(): Promise<TestDb> {
   const db = createTestDb();
   await migrate(db);
-  await db.runAsync('DELETE FROM scopes');
+  await db.runAsync('DELETE FROM scopes', []);
   return db;
 }
 

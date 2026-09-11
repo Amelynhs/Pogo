@@ -66,13 +66,14 @@ function cleanTitle(title: string): string {
  */
 export async function listFiles(db: Db, scopeId?: number | null): Promise<StoredFile[]> {
   if (scopeId === undefined) {
-    const rows = await db.getAllAsync<FileRow>(SELECT_FILES + ORDER_NEWEST_FIRST);
+    const rows = await db.getAllAsync<FileRow>(SELECT_FILES + ORDER_NEWEST_FIRST, []);
     return rows.map(toStoredFile);
   }
 
   if (scopeId === null) {
     const rows = await db.getAllAsync<FileRow>(
-      `${SELECT_FILES} WHERE f.scope_id IS NULL ${ORDER_NEWEST_FIRST}`
+      `${SELECT_FILES} WHERE f.scope_id IS NULL ${ORDER_NEWEST_FIRST}`,
+      []
     );
     return rows.map(toStoredFile);
   }
@@ -137,7 +138,8 @@ export async function deleteFile(db: Db, id: number): Promise<void> {
 /** Para decidir si mostrar el chip "Sin ambito" en el filtro. */
 export async function hasUnscopedFiles(db: Db): Promise<boolean> {
   const row = await db.getFirstAsync<{ total: number }>(
-    'SELECT COUNT(*) AS total FROM files WHERE scope_id IS NULL'
+    'SELECT COUNT(*) AS total FROM files WHERE scope_id IS NULL',
+    []
   );
   return (row?.total ?? 0) > 0;
 }

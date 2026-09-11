@@ -5,7 +5,7 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
-import { DATABASE_NAME, migrate, type Db } from '@/data/db';
+import { DATABASE_NAME, migrate } from '@/data/db';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -13,12 +13,7 @@ SplashScreen.preventAutoHideAsync();
 async function initDatabase(db: SQLiteDatabase) {
   // WAL hace las escrituras mas rapidas y evita bloqueos de lectura.
   await db.execAsync("PRAGMA journal_mode = 'wal'");
-  // Db es una interfaz minima pensada para pruebas con node:sqlite; su firma
-  // de runAsync es mas permisiva (unknown[]) que la real de SQLiteDatabase
-  // (SQLiteBindParams), asi que TypeScript no las relaciona directamente.
-  // En tiempo de ejecucion SQLiteDatabase cumple con creces lo que migrate
-  // necesita.
-  await migrate(db as unknown as Db);
+  await migrate(db);
 }
 
 export default function TabLayout() {
