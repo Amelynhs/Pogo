@@ -51,7 +51,7 @@ solo para probar que el ciclo funciona).
 El audio grabado se transcribe con Groq y se envía a Gemini, que responde
 de forma natural. Pogo ya conversa de verdad.
 
-### Fase 3 — Importador de archivos
+### Fase 3 — Importador de archivos (terminada)
 Pantalla para importar archivos desde el celular (PDFs, Word/Excel/PPT,
 imágenes, notas), etiquetados por ámbito de vida (banda, universidad,
 pareja, etc.), guardados localmente en el celular.

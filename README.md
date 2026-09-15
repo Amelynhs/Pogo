@@ -1,4 +1,4 @@
-# Pogo — Fase 2
+# Pogo — Fase 3
 
 Asistente personal por voz, corriendo en Expo Go. Mantienes presionado el
 botón, hablas, y Pogo te entiende y te responde en voz alta.
@@ -51,6 +51,12 @@ Escanea el QR con Expo Go (Android) o con la Cámara (iPhone). Celular y
 computadora tienen que estar en la misma red WiFi; si tu red lo bloquea, usa
 `npm start -- --tunnel`.
 
+Para correr las pruebas de la capa de datos (sin celular ni Expo):
+
+```bash
+npm test
+```
+
 > **Puerto 8082, no el 8081.** En esta máquina hay otro proyecto ocupando el
 > puerto por defecto, así que los scripts de `npm` fijan el 8082. Si alguna vez
 > liberas el 8081, quita el `--port 8082` de `package.json`.
@@ -71,6 +77,11 @@ src/
 │   └── conversation-log.tsx
 ├── constants/
 │   └── pogo-theme.ts      paleta gris oscura fija
+├── data/
+│   ├── db.ts              esquema, migraciones y siembra inicial de SQLite
+│   ├── scopes.ts          ámbitos de vida (las etiquetas de los archivos)
+│   ├── files.ts           metadatos de los archivos importados
+│   └── storage.ts         lo único que toca expo-file-system
 └── utils/
     ├── audio.ts           grabación (hook usePogoRecorder, sobre expo-audio)
     ├── stt.ts             transcripción con Groq
@@ -103,5 +114,4 @@ src/
 
 ## Qué sigue
 
-Fase 3: importar archivos al celular (PDFs, Word, imágenes) etiquetados por
-ámbito de vida, guardados localmente.
+Fase 4: búsqueda inteligente entre los archivos importados.
