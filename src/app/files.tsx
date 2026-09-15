@@ -180,20 +180,27 @@ export default function FilesScreen() {
           if (deletingRef.current) return;
           deletingRef.current = true;
           try {
-            // Primero la fila. Si el borrado del disco falla, queda un
-            // huerfano invisible; al reves quedaria un archivo visible que
-            // ya no existe.
-            await deleteFile(db, file.id);
-            removeFromLibrary(file.diskName);
-          } catch (error) {
-            Alert.alert('No pude borrar', (error as Error).message);
+            try {
+              // Primero la fila. Si el borrado del disco falla, queda un
+              // huerfano invisible; al reves quedaria un archivo visible
+              // que ya no existe.
+              await deleteFile(db, file.id);
+              removeFromLibrary(file.diskName);
+            } catch (error) {
+              Alert.alert('No pude borrar', (error as Error).message);
+            } finally {
+              // Se cierra y se refresca pase lo que pase: si la fila ya se
+              // borro pero fallo el disco, o si fallo la fila misma, dejar
+              // la hoja abierta mostraria un estado que ya no es cierto.
+              // Un refresh() siempre deja ver el estado real.
+              setActing(null);
+              await refresh();
+            }
           } finally {
-            // Se cierra y se refresca pase lo que pase: si la fila ya se
-            // borro pero fallo el disco, o si fallo la fila misma, dejar la
-            // hoja abierta mostraria un estado que ya no es cierto. Un
-            // refresh() siempre deja ver el estado real.
-            setActing(null);
-            await refresh();
+            // Aislado en su propio finally, sin nada mas dentro: si
+            // refresh() (arriba) lanzara, este reset tiene que ejecutarse
+            // igual, si no el guard contra doble tap se queda en true para
+            // siempre y "Borrar" deja de responder en silencio.
             deletingRef.current = false;
           }
         },
