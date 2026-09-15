@@ -119,9 +119,17 @@ export default function FilesScreen() {
   /** Quita de la lista un archivo cuyo fichero ya no esta en el disco. */
   const forget = useCallback(
     async (file: StoredFile) => {
-      await deleteFile(db, file.id);
-      setActing(null);
-      await refresh();
+      try {
+        await deleteFile(db, file.id);
+      } catch (error) {
+        Alert.alert('No pude borrar', (error as Error).message);
+      } finally {
+        // Se cierra y se refresca pase lo que pase: dejar la hoja abierta
+        // sobre una fila que puede o no seguir existiendo es peor que
+        // cerrarla y mostrar el estado real.
+        setActing(null);
+        await refresh();
+      }
     },
     [db, refresh]
   );
@@ -177,9 +185,15 @@ export default function FilesScreen() {
             // ya no existe.
             await deleteFile(db, file.id);
             removeFromLibrary(file.diskName);
+          } catch (error) {
+            Alert.alert('No pude borrar', (error as Error).message);
+          } finally {
+            // Se cierra y se refresca pase lo que pase: si la fila ya se
+            // borro pero fallo el disco, o si fallo la fila misma, dejar la
+            // hoja abierta mostraria un estado que ya no es cierto. Un
+            // refresh() siempre deja ver el estado real.
             setActing(null);
             await refresh();
-          } finally {
             deletingRef.current = false;
           }
         },
