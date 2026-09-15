@@ -2,7 +2,6 @@
 // Pantalla Archivos: lista filtrable por ambito.
 // El boton de importar y las acciones llegan en las tareas 8 y 9.
 
-import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -15,7 +14,7 @@ import { ScopeChips, type ScopeSelection } from '@/components/pogo/scope-chips';
 import { PogoColors, PogoSpacing, PogoTypography } from '@/constants/pogo-theme';
 import { addFile, hasUnscopedFiles, listFiles, type StoredFile } from '@/data/files';
 import { createScope, listScopes, type Scope } from '@/data/scopes';
-import { removeFromLibrary, saveToLibrary } from '@/data/storage';
+import { pickFileFromDevice, removeFromLibrary, saveToLibrary, type PickedFile } from '@/data/storage';
 
 export default function FilesScreen() {
   const db = useSQLiteContext();
@@ -25,12 +24,7 @@ export default function FilesScreen() {
   const [selected, setSelected] = useState<ScopeSelection>(undefined);
 
   // El archivo que el selector devolvio y todavia no se ha guardado.
-  const [picked, setPicked] = useState<{
-    uri: string;
-    name: string;
-    mimeType?: string;
-    size?: number;
-  } | null>(null);
+  const [picked, setPicked] = useState<PickedFile | null>(null);
 
   const refresh = useCallback(async () => {
     setScopes(await listScopes(db));
@@ -47,22 +41,16 @@ export default function FilesScreen() {
   );
 
   const pickFile = useCallback(async () => {
-    let result: DocumentPicker.DocumentPickerResult;
+    let result: PickedFile | null;
     try {
-      result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+      result = await pickFileFromDevice();
     } catch (error) {
       Alert.alert('No pude abrir el selector de archivos', (error as Error).message);
       return;
     }
-    if (result.canceled) return;
+    if (result === null) return;
 
-    const asset = result.assets[0];
-    setPicked({
-      uri: asset.uri,
-      name: asset.name,
-      mimeType: asset.mimeType,
-      size: asset.size,
-    });
+    setPicked(result);
   }, []);
 
   const saveImported = useCallback(
@@ -71,7 +59,7 @@ export default function FilesScreen() {
 
       // La copia va primero. Si la insercion falla despues, se borra el
       // archivo copiado para no dejar basura sin registrar.
-      const diskName = await saveToLibrary(picked.uri, picked.name);
+      const diskName = await saveToLibrary(picked);
       try {
         await addFile(db, {
           title: meta.title,
