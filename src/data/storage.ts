@@ -112,15 +112,8 @@ export async function saveToLibrary(picked: PickedFile): Promise<string> {
     } catch (cleanupError) {
       console.log('Storage - fallo limpiando la copia parcial:', cleanupError);
     }
-    // DIAGNOSTICO TEMPORAL: no es seguro que copiar un File que vino de
-    // pickFileAsync este permitido en Expo Go; es la apuesta de este arreglo,
-    // no un hecho confirmado en dispositivo. Si falla, el detalle tecnico va
-    // en el mensaje porque la conexion con la CLI puede estar caida y
-    // console.log no siempre llega al terminal. Quitar la segunda linea en
-    // cuanto se confirme en dispositivo que la copia funciona.
     throw new Error(
-      'No pude guardar el archivo. Puede que no haya espacio suficiente en el teléfono.' +
-        `\n\n[diagnostico temporal] ${String(error).slice(0, 300)}`
+      'No pude guardar el archivo. Puede que no haya espacio suficiente en el teléfono.'
     );
   }
 
