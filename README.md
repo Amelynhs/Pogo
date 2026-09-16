@@ -81,7 +81,7 @@ src/
 │   ├── db.ts              esquema, migraciones y siembra inicial de SQLite
 │   ├── scopes.ts          ámbitos de vida (las etiquetas de los archivos)
 │   ├── files.ts           metadatos de los archivos importados
-│   └── storage.ts         lo único que toca expo-file-system
+│   └── storage.ts         gestiona los archivos de la biblioteca (ver abajo)
 └── utils/
     ├── audio.ts           grabación (hook usePogoRecorder, sobre expo-audio)
     ├── stt.ts             transcripción con Groq
@@ -90,6 +90,12 @@ src/
     ├── config.ts          lectura de las claves
     └── errors.ts          PogoError: errores que Pogo dice en voz alta
 ```
+
+`storage.ts` es el único módulo que gestiona archivos en la biblioteca. La
+única otra importación de `expo-file-system` es `stt.ts`, que usa `File`
+como cuerpo de un `FormData` y no toca la biblioteca. Un ESLint
+`no-restricted-imports` en `eslint.config.js` hace cumplir esto: importar
+`expo-file-system` desde cualquier otro archivo falla el lint.
 
 ## Detalles que importan
 

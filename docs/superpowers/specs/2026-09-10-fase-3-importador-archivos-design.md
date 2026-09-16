@@ -33,7 +33,8 @@ Todo guardado localmente, sin nube.
 |---|---|
 | SQLite, no un archivo JSON | Las Fases 4 y 5 traen búsqueda, eventos e ideas con relaciones. Migrar después obligaría a rehacer la capa de datos con archivos ya guardados de por medio. |
 | Carpeta plana, no carpetas por ámbito | El ámbito de un archivo se puede cambiar. Con carpetas por ámbito habría que mover el archivo en disco cada vez. |
-| Copiar a `Paths.document`, no dejar en caché | `expo-document-picker` copia a la caché por defecto, y el sistema puede vaciarla cuando falta espacio. `document` está a salvo. |
+| Copiar a `Paths.document`, no dejar en caché | El selector deja el archivo elegido en una carpeta temporal, y el sistema puede vaciarla cuando falta espacio. `document` está a salvo. |
+| Seleccionar con `File.pickFileAsync`, no `expo-document-picker` (**cambiado durante la implementación**, ver abajo) | En Expo Go, el `File` que da `expo-document-picker` apunta a la caché **compartida** de Expo Go (fuera del dominio de la app), y `expo-file-system` no tenía permiso de lectura ahí: la copia fallaba con un error de permiso, y encima `File.exists` daba `false` aunque el archivo existiera y fuera legible (ver `AGENTS.md`, "La trampa de `File.exists`"). `File.pickFileAsync` (de `expo-file-system`) crea el `File` con el propio módulo que después lo copia, así que el permiso de lectura viaja con el objeto. No reinstalar `expo-document-picker` para esto. |
 | Borrar un ámbito NO borra sus archivos | Borrar una etiqueta no debería borrar las partituras. Los archivos quedan "sin ámbito". |
 | Una sola acción "abrir o compartir" | En Expo Go, `expo-sharing` abre la hoja del sistema con las apps que pueden manejar el archivo — eso ya es abrir. Un "abrir" separado exigiría `getContentUriAsync`, que sólo existe en la API legacy de `expo-file-system` y sólo sirve en Android. |
 | Ajustes como tercera pestaña | El layout actual es `NativeTabs` plano. Un engranaje que empuje una pantalla obligaría a reestructurar la navegación en stacks anidados. |
@@ -116,7 +117,7 @@ no ocupar espacio cuando no hace falta.
 
 ### Importar
 
-1. El `+` abre el selector del sistema (`type: '*/*'`, un archivo)
+1. El `+` abre el selector del sistema (`File.pickFileAsync`, cualquier tipo, un archivo)
 2. Al volver, una hoja pide título (prellenado con el nombre original) y ámbito
 3. En esa misma hoja se puede crear un ámbito nuevo sin ir a Ajustes
 4. Al guardar: se copia el archivo a `document/library/` y se inserta la fila
@@ -168,11 +169,22 @@ del proyecto.
 | `data/db.ts` | Tipo `Db`, migraciones, apertura |
 | `data/scopes.ts` | Ámbitos: listar con conteo, crear, renombrar, borrar |
 | `data/files.ts` | Archivos: listar con filtro, importar, editar, borrar |
-| `data/storage.ts` | Copiar y borrar del disco. Único módulo que toca `expo-file-system` |
+| `data/storage.ts` | Copiar y borrar del disco. Único módulo que gestiona archivos en la biblioteca |
 
-`storage.ts` va separado a propósito: es la única pieza que toca el disco. Si
-cambia la API de `expo-file-system` — como ya pasó en la Fase 2 — se arregla en
-un archivo.
+`storage.ts` va separado a propósito: es la única pieza que gestiona la
+biblioteca. Si cambia la API de `expo-file-system` — como ya pasó en la Fase 2
+— se arregla en un archivo.
+
+**Actualizado en el fix wave de fin de rama:** esta regla estaba desactualizada
+desde antes de escribirse: `utils/stt.ts` también importa `expo-file-system`
+(usa `File` como cuerpo de un `FormData`, porque desde el SDK 54 el `fetch` de
+Expo no acepta el objeto `{uri, name, type}` de React Native). Es un uso
+genuinamente distinto — `stt.ts` no toca la biblioteca, ni sabe que existe — así
+que no se refactorizó dentro de `storage.ts`. La regla correcta es: `storage.ts`
+es el único módulo que gestiona archivos en la biblioteca; la única otra
+importación de `expo-file-system` es `stt.ts`. Un ESLint `no-restricted-imports`
+(en `eslint.config.js`) hace cumplir esto en vez de dejarlo solo en prosa: sólo
+esos dos archivos pueden importar `expo-file-system`.
 
 ### Interfaces
 
@@ -207,17 +219,25 @@ export type StoredFile = {
 //   listFiles(db, 3)     -> los del ámbito 3
 //   listFiles(db, null)  -> los que no tienen ámbito
 listFiles(db: Db, scopeId?: number | null): Promise<StoredFile[]>
-importFile(db: Db, source: { uri: string; name: string; mimeType?: string; size?: number },
-           meta: { title: string; scopeId: number | null }): Promise<StoredFile>
+addFile(db: Db, data: { title: string; diskName: string; mimeType?: string | null;
+        size?: number | null; scopeId: number | null }): Promise<StoredFile>
 updateFile(db: Db, id: number, meta: { title: string; scopeId: number | null }): Promise<void>
 deleteFile(db: Db, id: number): Promise<void>
 
 // data/storage.ts
-saveToLibrary(sourceUri: string, originalName: string): Promise<string>  // devuelve diskName
-removeFromLibrary(diskName: string): Promise<void>
+saveToLibrary(picked: PickedFile): Promise<string>  // devuelve diskName
+removeFromLibrary(diskName: string): void
 libraryUri(diskName: string): string
 existsInLibrary(diskName: string): boolean
 ```
+
+**Actualizado en el fix wave de fin de rama:** las firmas de arriba son las que
+terminó teniendo el código, no las que se planearon al principio de la fase.
+`importFile` se implementó como `addFile`: recibe `diskName` ya calculado (la
+copia la hace `storage.ts` antes, no `files.ts`), no una `uri` de origen —
+`saveToLibrary` tampoco recibe `sourceUri`/`originalName` sueltos, sino el
+`PickedFile` completo que devuelve `pickFileFromDevice` (ver más abajo, por
+qué se abandonó `expo-document-picker`).
 
 ### Pantallas
 
@@ -238,7 +258,7 @@ existsInLibrary(diskName: string): boolean
 | Archivo que ya no está en disco | Al tocarlo, se avisa y se ofrece quitarlo de la lista |
 | Falla la copia (sin espacio) | No se inserta nada en la base; mensaje claro |
 | Importación cancelada | No pasa nada, no queda basura |
-| `expo-sharing` no disponible | Se comprueba con `isAvailableAsync` antes de ofrecer la acción |
+| `expo-sharing` no disponible | Se comprueba con `isAvailableAsync` al tocar "Abrir o compartir", no antes de ofrecer la acción (actualizado en el fix wave: comprobarlo al tocar es mejor diseño — evita un chequeo extra en cada render sólo para decidir si se muestra una fila que casi siempre va a estar disponible) |
 
 Los errores de esta capa se muestran en un `Alert`, no se hablan. `PogoError`
 (`utils/errors.ts`) queda reservado para el ciclo de voz, que es donde tiene
@@ -273,6 +293,16 @@ Qué se prueba:
 - Orden por fecha de importación
 - Editar título y ámbito de un archivo
 - Borrar un archivo
+
+**Advertencia permanente (añadida en el fix wave de fin de rama):** esta
+batería prueba SQL y lógica, no nada que dependa de la configuración regional
+ni del motor. `scopes.ts` mueve la collation para comparar nombres de
+JavaScript (`toLocaleLowerCase('es')`, `localeCompare(..., 'es')`) porque el
+`NOCASE` de SQLite no maneja acentos — pero Node corre con ICU completo y
+Hermes (el motor en el dispositivo) puede no traerlo. Las pruebas de acentos
+("createScope rechaza un duplicado de una letra acentuada...", "listScopes
+ordena nombres acentuados...") pasan aquí porque Node lo soporta; no prueban
+que Hermes en el celular real se comporte igual, y esta batería no puede verlo.
 
 `storage.ts` y las pantallas no se prueban automáticamente: dependen del
 sistema de archivos del celular y de la interfaz. Se verifican a mano en
