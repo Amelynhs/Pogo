@@ -31,8 +31,15 @@ export async function transcribe(uri: string): Promise<string> {
   }
 
   const file = new File(uri);
-  if (!file.exists || file.size === 0) {
-    console.log('Groq - grabación vacía o inexistente:', uri, 'size:', file.size);
+  // Solo se comprueba size, no file.exists. exists viene en false tanto si
+  // el archivo no existe como si expo-file-system no tiene permiso para
+  // leerlo (ver AGENTS.md); aqui uri viene de expo-audio, otro modulo, asi
+  // que un File construido a mano sobre esa uri es estructuralmente el
+  // mismo caso que causo el bug del selector de archivos. size no tiene
+  // ese problema: en el incidente que motivo esto, el mismo archivo dio
+  // exists=false y size=33803 a la vez, y size dijo la verdad.
+  if (file.size === 0) {
+    console.log('Groq - grabación vacía:', uri, 'size:', file.size);
     throw new PogoError('La grabación salió vacía. Intenta de nuevo.');
   }
   console.log('Groq - subiendo', file.name, file.type, file.size, 'bytes');
