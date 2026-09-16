@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PogoColors, PogoSpacing, PogoTypography } from '@/constants/pogo-theme';
 import { createScope, deleteScope, listScopes, renameScope, type Scope } from '@/data/scopes';
+import { runOrAlert } from '@/utils/alert-error';
 
 export default function SettingsScreen() {
   const db = useSQLiteContext();
@@ -33,6 +34,10 @@ export default function SettingsScreen() {
   // ven igual el valor vivo, no uno capturado y desactualizado.
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  // Guard contra doble tap en "Borrar", mismo patron que savingRef arriba
+  // y que deletingRef en files.tsx: un ref se lee/escribe en el acto, sin
+  // esperar a un render.
+  const deletingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     setScopes(await listScopes(db));
@@ -44,13 +49,22 @@ export default function SettingsScreen() {
   // conteos por ambito deben reflejar eso, no quedarse con el valor viejo.
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      void runOrAlert('No pude actualizar la lista', refresh);
     }, [refresh])
   );
 
   const openEditor = useCallback((target: Scope | 'new') => {
     setEditing(target);
     setDraftName(target === 'new' ? '' : target.name);
+  }, []);
+
+  // Mismo patron que cancel() en file-form-sheet.tsx: respeta "saving" para
+  // no cerrar el modal a mitad de un guardado en curso, y cubre tanto el
+  // boton Cancelar como el boton fisico de volver en Android
+  // (onRequestClose), que si no quedaba sin este guard.
+  const cancel = useCallback(() => {
+    if (savingRef.current) return;
+    setEditing(null);
   }, []);
 
   const save = useCallback(async () => {
@@ -90,9 +104,31 @@ export default function SettingsScreen() {
         text: 'Borrar',
         style: 'destructive',
         onPress: async () => {
-          await deleteScope(db, scope.id);
-          setEditing(null);
-          await refresh();
+          if (deletingRef.current) return;
+          deletingRef.current = true;
+          try {
+            try {
+              await deleteScope(db, scope.id);
+            } catch (error) {
+              Alert.alert('No pude borrar', (error as Error).message);
+            } finally {
+              // Se cierra y se refresca pase lo que pase: dejar el modal
+              // abierto sobre un ambito que puede o no seguir existiendo
+              // es peor que cerrarlo y mostrar el estado real. runOrAlert
+              // evita que un refresh() fallido llegue sin manejar hasta el
+              // finally de abajo, que solo debe resetear el guard. Los
+              // archivos del ambito nunca corren riesgo aqui: el esquema
+              // los deja sin ambito (ON DELETE SET NULL), no los borra.
+              setEditing(null);
+              await runOrAlert('No pude actualizar la lista', refresh);
+            }
+          } finally {
+            // Aislado en su propio finally, sin nada mas dentro: si
+            // refresh() (arriba) lanzara, este reset tiene que ejecutarse
+            // igual, si no el guard contra doble tap se queda en true para
+            // siempre y "Borrar" deja de responder en silencio.
+            deletingRef.current = false;
+          }
         },
       },
     ]);
@@ -135,7 +171,7 @@ export default function SettingsScreen() {
         visible={editing !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setEditing(null)}>
+        onRequestClose={cancel}>
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>
@@ -155,7 +191,7 @@ export default function SettingsScreen() {
             />
 
             <View style={styles.sheetActions}>
-              <Pressable onPress={() => setEditing(null)}>
+              <Pressable onPress={cancel} disabled={saving}>
                 <Text style={styles.actionText}>Cancelar</Text>
               </Pressable>
 
@@ -166,7 +202,9 @@ export default function SettingsScreen() {
               )}
 
               <Pressable onPress={save} disabled={saving}>
-                <Text style={[styles.actionText, styles.primary]}>Guardar</Text>
+                <Text style={[styles.actionText, styles.primary]}>
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </Text>
               </Pressable>
             </View>
           </View>

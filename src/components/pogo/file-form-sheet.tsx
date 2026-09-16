@@ -2,7 +2,7 @@
 // Hoja para poner titulo y ambito a un archivo. La misma sirve para importar
 // uno nuevo y para editar uno existente.
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ScopeChips } from '@/components/pogo/scope-chips';
@@ -42,17 +42,24 @@ export function FileFormSheet({
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
-  // Al abrirse con otro archivo hay que recargar los campos.
-  useEffect(() => {
-    if (visible) {
-      setTitle(initialTitle);
-      setScopeId(initialScopeId);
-      setNewScopeName('');
-    }
-  }, [visible, initialTitle, initialScopeId]);
+  // Los campos ya NO se recargan con un efecto: files.tsx le da a esta hoja
+  // una `key` distinta por cada archivo (importado o editado), asi que
+  // React la remonta entera cuando cambia de archivo y title/scopeId
+  // arrancan de initialTitle/initialScopeId de nuevo, sin un setState
+  // sincrono dentro de un efecto (ver react-hooks/set-state-in-effect).
 
   const save = async () => {
     if (savingRef.current) return;
+
+    // Se valida antes de llamar a onSave, no despues: onSave (saveImported)
+    // copia el archivo al disco antes de intentar guardar la fila, y esa
+    // copia no tiene sentido hacerla para despues borrarla porque el
+    // nombre vino vacio.
+    if (!title.trim()) {
+      Alert.alert('Falta el nombre', 'El archivo necesita un nombre.');
+      return;
+    }
+
     savingRef.current = true;
     setSaving(true);
     try {

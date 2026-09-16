@@ -1,6 +1,6 @@
 // src/app/files.tsx
-// Pantalla Archivos: lista filtrable por ambito.
-// El boton de importar y las acciones llegan en las tareas 8 y 9.
+// Pantalla Archivos: lista filtrable por ambito, con importar, abrir o
+// compartir, editar y borrar.
 
 import { useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -31,6 +31,7 @@ import {
   saveToLibrary,
   type PickedFile,
 } from '@/data/storage';
+import { runOrAlert } from '@/utils/alert-error';
 
 export default function FilesScreen() {
   const db = useSQLiteContext();
@@ -53,18 +54,44 @@ export default function FilesScreen() {
   // guard un doble tap dispararia dos veces la confirmacion nativa y, si el
   // sistema la deja repetirse, dos refresh() innecesarios.
   const deletingRef = useRef(false);
+  // Guard contra doble tap en "Abrir o compartir": mismo patron que
+  // deletingRef, arriba.
+  const sharingRef = useRef(false);
+
+  // Espejo sincrono de `selected`. refresh() lo lee en vez del estado
+  // porque, cuando saveImported/saveEdited mueven el filtro al ambito del
+  // archivo que se acaba de guardar y llaman a refresh() en el mismo tick,
+  // el `selected` capturado en la closure de refresh() todavia seria el
+  // viejo: setSelected() no actualiza ese valor hasta el siguiente render.
+  const selectedRef = useRef<ScopeSelection>(undefined);
+
+  const setActiveScope = useCallback((next: ScopeSelection) => {
+    selectedRef.current = next;
+    setSelected(next);
+  }, []);
 
   const refresh = useCallback(async () => {
-    setScopes(await listScopes(db));
+    const freshScopes = await listScopes(db);
+    setScopes(freshScopes);
     setShowUnscoped(await hasUnscopedFiles(db));
-    setFiles(await listFiles(db, selected));
-  }, [db, selected]);
+
+    // Si el ambito activo en el filtro ya no existe (por ejemplo, se borro
+    // en Ajustes mientras esta pantalla estaba filtrada por el), seguir
+    // filtrando por ese id ya no tiene sentido: siempre daria una lista
+    // vacia aunque los archivos sigan ahi, sin ambito. Se cae a "Todos".
+    const current = selectedRef.current;
+    const stillValid = typeof current !== 'number' || freshScopes.some((s) => s.id === current);
+    const activeScope = stillValid ? current : undefined;
+    if (activeScope !== current) setActiveScope(activeScope);
+
+    setFiles(await listFiles(db, activeScope));
+  }, [db, setActiveScope]);
 
   // Al volver de Ajustes los ambitos pueden haber cambiado, asi que se
   // recarga cada vez que la pantalla toma el foco, no solo al montarse.
   useFocusEffect(
     useCallback(() => {
-      refresh();
+      void runOrAlert('No pude actualizar la lista', refresh);
     }, [refresh])
   );
 
@@ -97,14 +124,31 @@ export default function FilesScreen() {
           scopeId: meta.scopeId,
         });
       } catch (error) {
-        removeFromLibrary(diskName);
+        try {
+          removeFromLibrary(diskName);
+        } catch (cleanupError) {
+          // No tapar el error original con uno de limpieza: se registra
+          // aparte y se relanza el de addFile, que es el que hay que
+          // mostrarle a ella.
+          console.log('Files - fallo limpiando la copia tras un addFile fallido:', cleanupError);
+        }
         throw error;
       }
 
       setPicked(null);
-      await refresh();
+      // Si el archivo quedo en un ambito distinto al filtro activo, no
+      // seria visible en la lista: mover el filtro a su ambito evita que
+      // parezca que no paso nada.
+      if (selectedRef.current !== undefined && selectedRef.current !== meta.scopeId) {
+        setActiveScope(meta.scopeId);
+      }
+      // Envuelto en runOrAlert (no en el try de arriba, que es el que
+      // FileFormSheet.save() captura): si refresh() fallara despues de que
+      // addFile ya tuvo exito, no hay que reportar "No pude guardar" sobre
+      // un guardado que si funciono.
+      await runOrAlert('No pude actualizar la lista', refresh);
     },
-    [db, picked, refresh]
+    [db, picked, refresh, setActiveScope]
   );
 
   const addScopeInline = useCallback(
@@ -126,45 +170,64 @@ export default function FilesScreen() {
       } finally {
         // Se cierra y se refresca pase lo que pase: dejar la hoja abierta
         // sobre una fila que puede o no seguir existiendo es peor que
-        // cerrarla y mostrar el estado real.
+        // cerrarla y mostrar el estado real. runOrAlert evita que un
+        // refresh() fallido se escape sin manejar de este finally.
         setActing(null);
-        await refresh();
+        await runOrAlert('No pude actualizar la lista', refresh);
       }
     },
     [db, refresh]
   );
 
   const shareFile = useCallback(async () => {
-    if (!acting) return;
+    if (!acting || sharingRef.current) return;
     const file = acting;
+    sharingRef.current = true;
 
-    // existsInLibrary usa la misma propiedad `exists` de expo-file-system
-    // que dio un falso negativo con el document picker (ver storage.ts).
-    // Aqui el archivo vive DENTRO de la carpeta de la app (Paths.document),
-    // el mismo dominio en el que expo-file-system funciona bien en Expo Go,
-    // asi que `exists` es de fiar para este caso: el problema anterior era
-    // por una URI ajena al dominio de la app, no por `exists` en si mismo.
-    if (!existsInLibrary(file.diskName)) {
-      Alert.alert(
-        'Ese archivo ya no está',
-        'El archivo desapareció del celular. ¿Lo quito de la lista?',
-        [
-          { text: 'Dejarlo', style: 'cancel' },
-          { text: 'Quitarlo', style: 'destructive', onPress: () => forget(file) },
-        ]
-      );
-      return;
+    try {
+      // existsInLibrary usa la misma propiedad `exists` de expo-file-system
+      // que dio un falso negativo con el document picker (ver storage.ts).
+      // Aqui el archivo vive DENTRO de la carpeta de la app (Paths.document),
+      // el mismo dominio en el que expo-file-system funciona bien en Expo Go,
+      // asi que `exists` es de fiar para este caso: el problema anterior era
+      // por una URI ajena al dominio de la app, no por `exists` en si mismo.
+      if (!existsInLibrary(file.diskName)) {
+        Alert.alert(
+          'Ese archivo ya no está',
+          'El archivo desapareció del celular. ¿Lo quito de la lista?',
+          [
+            { text: 'Dejarlo', style: 'cancel' },
+            {
+              text: 'Quitarlo',
+              style: 'destructive',
+              onPress: () => {
+                void runOrAlert('No pude quitar el archivo', () => forget(file));
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('No disponible', 'Este celular no permite abrir ni compartir archivos así.');
+        return;
+      }
+
+      // setActing(null) va despues del await, no antes: si shareAsync
+      // fallara (FileProvider en Android, mime sin app que lo reciba,
+      // ninguna app disponible), la hoja ya se habria cerrado sin dejar
+      // rastro del fallo. Con el catch de abajo, en cambio, se explica.
+      await Sharing.shareAsync(libraryUri(file.diskName), {
+        mimeType: file.mimeType ?? undefined,
+      });
+      setActing(null);
+    } catch (error) {
+      console.log('Files - fallo al abrir o compartir:', error);
+      Alert.alert('No pude abrir ni compartir', (error as Error).message);
+    } finally {
+      sharingRef.current = false;
     }
-
-    if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert('No disponible', 'Este celular no permite abrir ni compartir archivos así.');
-      return;
-    }
-
-    setActing(null);
-    await Sharing.shareAsync(libraryUri(file.diskName), {
-      mimeType: file.mimeType ?? undefined,
-    });
   }, [acting, forget]);
 
   const confirmDeleteFile = useCallback(() => {
@@ -192,9 +255,11 @@ export default function FilesScreen() {
               // Se cierra y se refresca pase lo que pase: si la fila ya se
               // borro pero fallo el disco, o si fallo la fila misma, dejar
               // la hoja abierta mostraria un estado que ya no es cierto.
-              // Un refresh() siempre deja ver el estado real.
+              // Un refresh() siempre deja ver el estado real. runOrAlert
+              // evita que un refresh() fallido llegue sin manejar hasta el
+              // finally de abajo, que solo debe resetear el guard.
               setActing(null);
-              await refresh();
+              await runOrAlert('No pude actualizar la lista', refresh);
             }
           } finally {
             // Aislado en su propio finally, sin nada mas dentro: si
@@ -213,9 +278,18 @@ export default function FilesScreen() {
       if (!editingFile) return;
       await updateFile(db, editingFile.id, meta);
       setEditingFile(null);
-      await refresh();
+      // Mismo razonamiento que en saveImported: si el ambito cambio a uno
+      // distinto del filtro activo, la fila desapareceria de la lista sin
+      // ninguna señal de que el guardado si funciono.
+      if (selectedRef.current !== undefined && selectedRef.current !== meta.scopeId) {
+        setActiveScope(meta.scopeId);
+      }
+      // Igual que en saveImported: fuera del alcance del try que
+      // FileFormSheet.save() captura, para no reportar "No pude guardar"
+      // sobre una edicion que si se guardo.
+      await runOrAlert('No pude actualizar la lista', refresh);
     },
-    [db, editingFile, refresh]
+    [db, editingFile, refresh, setActiveScope]
   );
 
   return (
@@ -231,7 +305,7 @@ export default function FilesScreen() {
         <ScopeChips
           scopes={scopes}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={setActiveScope}
           showAll
           showUnscoped={showUnscoped}
         />
@@ -252,6 +326,12 @@ export default function FilesScreen() {
       </SafeAreaView>
 
       <FileFormSheet
+        // La hoja recuerda sus campos entre aperturas porque no se
+        // desmonta al cerrarse (Modal solo esconde, no desmonta). La key
+        // cambia con cada archivo elegido, asi que React la remonta y los
+        // campos arrancan de initialTitle/initialScopeId de nuevo, en vez
+        // de arrastrar lo que se haya escrito para el archivo anterior.
+        key={picked?.file.uri ?? 'import-closed'}
         visible={picked !== null}
         heading="Guardar archivo"
         initialTitle={picked?.name ?? ''}
@@ -274,6 +354,10 @@ export default function FilesScreen() {
       />
 
       <FileFormSheet
+        // Misma razon que la hoja de importar, arriba: la key cambia con
+        // cada archivo distinto que se edita, para que la hoja remonte y
+        // no arrastre los campos del archivo editado anteriormente.
+        key={editingFile?.id ?? 'import'}
         visible={editingFile !== null}
         heading="Editar archivo"
         initialTitle={editingFile?.title ?? ''}
