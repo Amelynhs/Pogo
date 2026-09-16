@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DATABASE_VERSION, migrate } from '../db.ts';
-import { createTestDb } from './test-db.ts';
+import { createTestDb, initTestDb } from './test-db.ts';
 
 test('migrate crea las tablas y deja la version puesta', async () => {
   const db = createTestDb();
@@ -40,8 +40,11 @@ test('migrate dos veces no duplica la siembra', async () => {
 });
 
 test('borrar un ambito deja sus archivos sin ambito, no los borra', async () => {
-  const db = createTestDb();
-  await migrate(db);
+  // initTestDb(), no createTestDb()+migrate(): esta prueba depende de
+  // ON DELETE SET NULL, que necesita foreign_keys en ON. Ese pragma ya no
+  // lo activa migrate() (ver data/db.ts) sino quien abre la conexion, y
+  // initTestDb() reproduce ese paso para las pruebas.
+  const db = await initTestDb();
 
   const scope = await db.runAsync('INSERT INTO scopes (name, created_at) VALUES (?, ?)', ['prueba', 1]);
   await db.runAsync(

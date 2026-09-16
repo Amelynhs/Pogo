@@ -3,7 +3,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrate } from '../db.ts';
 import {
   addFile,
   deleteFile,
@@ -13,11 +12,10 @@ import {
   updateFile,
 } from '../files.ts';
 import { createScope } from '../scopes.ts';
-import { createTestDb, type TestDb } from './test-db.ts';
+import { initTestDb, type TestDb } from './test-db.ts';
 
 async function freshDb(): Promise<TestDb> {
-  const db = createTestDb();
-  await migrate(db);
+  const db = await initTestDb();
   await db.runAsync('DELETE FROM scopes', []);
   return db;
 }

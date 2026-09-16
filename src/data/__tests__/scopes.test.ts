@@ -3,13 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrate } from '../db.ts';
 import { createScope, deleteScope, listScopes, renameScope } from '../scopes.ts';
-import { createTestDb, type TestDb } from './test-db.ts';
+import { initTestDb, type TestDb } from './test-db.ts';
 
 async function freshDb(): Promise<TestDb> {
-  const db = createTestDb();
-  await migrate(db);
+  const db = await initTestDb();
   await db.runAsync('DELETE FROM scopes', []);
   return db;
 }
@@ -114,7 +112,7 @@ test('createScope rechaza un duplicado de una letra acentuada con mayuscula dife
 test('createScope permite nombres que difieren solo por el acento', async () => {
   const db = await freshDb();
   await createScope(db, 'musica');
-  const scope2 = await createScope(db, 'música');
+  await createScope(db, 'música');
 
   const scopes = await listScopes(db);
   assert.equal(scopes.length, 2);

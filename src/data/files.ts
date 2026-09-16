@@ -123,16 +123,26 @@ export async function updateFile(
   meta: { title: string; scopeId: number | null }
 ): Promise<void> {
   const title = cleanTitle(meta.title);
-  await db.runAsync('UPDATE files SET title = ?, scope_id = ? WHERE id = ?', [
-    title,
-    meta.scopeId,
-    id,
-  ]);
+  try {
+    await db.runAsync('UPDATE files SET title = ?, scope_id = ? WHERE id = ?', [
+      title,
+      meta.scopeId,
+      id,
+    ]);
+  } catch (error) {
+    console.log('Files - fallo actualizando el archivo:', error);
+    throw new Error('No pude guardar los cambios del archivo.');
+  }
 }
 
 /** Borra solo la fila. El archivo del disco lo borra quien llama, despues. */
 export async function deleteFile(db: Db, id: number): Promise<void> {
-  await db.runAsync('DELETE FROM files WHERE id = ?', [id]);
+  try {
+    await db.runAsync('DELETE FROM files WHERE id = ?', [id]);
+  } catch (error) {
+    console.log('Files - fallo borrando el archivo:', error);
+    throw new Error('No pude borrar el archivo.');
+  }
 }
 
 /** Para decidir si mostrar el chip "Sin ambito" en el filtro. */

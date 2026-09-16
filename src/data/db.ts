@@ -51,11 +51,15 @@ CREATE INDEX idx_files_imported ON files(imported_at DESC);
 /** Ambitos con los que arranca la app la primera vez. */
 const SEED_SCOPES = ['banda', 'universidad', 'pareja'];
 
+/**
+ * Migra el esquema. NO activa `PRAGMA foreign_keys`: ese pragma es por
+ * *conexion*, no por migracion (SQLite no lo persiste), asi que le toca a
+ * quien abre la conexion (`initDatabase` en `app/_layout.tsx`), no a quien
+ * migra. Antes vivia aqui, y solo funcionaba porque `migrate` se llamaba una
+ * vez por conexion desde `onInit`; cualquier otra apertura que se saltara
+ * `migrate` se habria quedado sin la garantia de `ON DELETE SET NULL`.
+ */
 export async function migrate(db: Db): Promise<void> {
-  // foreign_keys es por conexion y SQLite no lo persiste: hay que activarlo
-  // en cada apertura. Sin esto, ON DELETE SET NULL no se aplica.
-  await db.execAsync('PRAGMA foreign_keys = ON');
-
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
   const currentVersion = row?.user_version ?? 0;
   if (currentVersion >= DATABASE_VERSION) return;

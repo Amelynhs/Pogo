@@ -79,7 +79,12 @@ export async function renameScope(db: Db, id: number, name: string): Promise<voi
   const clean = cleanName(name);
   await ensureNameIsFree(db, clean, id);
 
-  await db.runAsync('UPDATE scopes SET name = ? WHERE id = ?', [clean, id]);
+  try {
+    await db.runAsync('UPDATE scopes SET name = ? WHERE id = ?', [clean, id]);
+  } catch (error) {
+    console.log('Scopes - fallo renombrando el ambito:', error);
+    throw new Error('No pude guardar el nombre del ámbito.');
+  }
 }
 
 /**
@@ -88,5 +93,10 @@ export async function renameScope(db: Db, id: number, name: string): Promise<voi
  * partituras.
  */
 export async function deleteScope(db: Db, id: number): Promise<void> {
-  await db.runAsync('DELETE FROM scopes WHERE id = ?', [id]);
+  try {
+    await db.runAsync('DELETE FROM scopes WHERE id = ?', [id]);
+  } catch (error) {
+    console.log('Scopes - fallo borrando el ambito:', error);
+    throw new Error('No pude borrar el ámbito.');
+  }
 }

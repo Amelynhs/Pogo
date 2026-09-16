@@ -13,6 +13,11 @@ SplashScreen.preventAutoHideAsync();
 async function initDatabase(db: SQLiteDatabase) {
   // WAL hace las escrituras mas rapidas y evita bloqueos de lectura.
   await db.execAsync("PRAGMA journal_mode = 'wal'");
+  // foreign_keys es por conexion y SQLite no lo persiste: hay que activarlo
+  // en cada apertura, no en cada migracion. Sin esto, ON DELETE SET NULL no
+  // se aplica y borrar un ambito dejaria sus archivos apuntando a un id que
+  // ya no existe en vez de quedar sin ambito.
+  await db.execAsync('PRAGMA foreign_keys = ON');
   await migrate(db);
 }
 
