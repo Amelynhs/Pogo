@@ -8,7 +8,7 @@
 
 import { DatabaseSync } from 'node:sqlite';
 
-import { migrate, type Db } from '../db.ts';
+import { initDatabase, type Db } from '../db.ts';
 
 export type TestDb = Db & { close(): void };
 
@@ -46,16 +46,14 @@ export function createTestDb(): TestDb {
 }
 
 /**
- * Crea una base de pruebas y la deja lista para usar, reproduciendo lo que
- * hace `initDatabase()` en `app/_layout.tsx`: `PRAGMA foreign_keys = ON`
- * antes de migrar. `migrate()` ya no activa ese pragma (ver el comentario en
- * `data/db.ts`), asi que sin esto `ON DELETE SET NULL` no se aplicaria y las
+ * Crea una base de pruebas y la deja lista para usar, llamando a la MISMA
+ * `initDatabase()` que usa `app/_layout.tsx` (via data/db.ts), no una copia
+ * retipeada del pragma. Sin esto, `ON DELETE SET NULL` no se aplicaria y las
  * pruebas que comprueban que borrar un ambito no borra sus archivos no
- * probarian nada.
+ * probarian nada — ya paso una vez con una copia manual del pragma.
  */
 export async function initTestDb(): Promise<TestDb> {
   const db = createTestDb();
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await migrate(db);
+  await initDatabase(db);
   return db;
 }

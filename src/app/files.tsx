@@ -65,10 +65,22 @@ export default function FilesScreen() {
   // viejo: setSelected() no actualiza ese valor hasta el siguiente render.
   const selectedRef = useRef<ScopeSelection>(undefined);
 
-  const setActiveScope = useCallback((next: ScopeSelection) => {
-    selectedRef.current = next;
-    setSelected(next);
-  }, []);
+  const setActiveScope = useCallback(
+    (next: ScopeSelection) => {
+      selectedRef.current = next;
+      setSelected(next);
+      // Sin este re-query, cambiar de chip no hacia nada visible: refresh()
+      // ya no depende de `selected` (selectedRef existe justo para evitar
+      // ese closure viejo), y useFocusEffect solo reacciona a que refresh
+      // cambie de identidad, cosa que con `selected` fuera de sus deps ya
+      // no pasa. Sin esto la lista solo se actualizaba al volver a la
+      // pestana, no al tocar un chip.
+      void runOrAlert('No pude actualizar la lista', async () => {
+        setFiles(await listFiles(db, next));
+      });
+    },
+    [db]
+  );
 
   const refresh = useCallback(async () => {
     const freshScopes = await listScopes(db);

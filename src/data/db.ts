@@ -54,10 +54,10 @@ const SEED_SCOPES = ['banda', 'universidad', 'pareja'];
 /**
  * Migra el esquema. NO activa `PRAGMA foreign_keys`: ese pragma es por
  * *conexion*, no por migracion (SQLite no lo persiste), asi que le toca a
- * quien abre la conexion (`initDatabase` en `app/_layout.tsx`), no a quien
- * migra. Antes vivia aqui, y solo funcionaba porque `migrate` se llamaba una
- * vez por conexion desde `onInit`; cualquier otra apertura que se saltara
- * `migrate` se habria quedado sin la garantia de `ON DELETE SET NULL`.
+ * quien abre la conexion (`initDatabase`, abajo), no a quien migra. Antes
+ * vivia aqui, y solo funcionaba porque `migrate` se llamaba una vez por
+ * conexion desde `onInit`; cualquier otra apertura que se saltara `migrate`
+ * se habria quedado sin la garantia de `ON DELETE SET NULL`.
  */
 export async function migrate(db: Db): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version', []);
@@ -74,4 +74,28 @@ export async function migrate(db: Db): Promise<void> {
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * Deja una conexion lista para usar: activa `foreign_keys` (por conexion,
+ * no persiste, ver el comentario de `migrate` arriba) y despues migra.
+ *
+ * Vive aqui, y no solo en `app/_layout.tsx`, para que las pruebas puedan
+ * llamar a la MISMA funcion en vez de retipear el pragma por su cuenta.
+ * Ya paso una vez que ese pragma se le perdio a las pruebas sin que
+ * ninguna fallara (por eso `createTestDb`, en `__tests__/test-db.ts`, deja
+ * foreign_keys en OFF a proposito, para que la prueba de ON DELETE SET
+ * NULL solo pueda pasar si de verdad se activo). Con producción y pruebas
+ * compartiendo esta funcion, no hay una segunda copia que se pueda
+ * desincronizar.
+ *
+ * NO incluye `PRAGMA journal_mode = 'wal'`: WAL es una optimizacion de
+ * escritura sobre archivo real, no una garantia de correccion, y las bases
+ * `:memory:` de las pruebas no la necesitan (SQLite ni siquiera puede usar
+ * WAL en memoria). Ese pragma se queda en `app/_layout.tsx`, antes de
+ * llamar a esta funcion.
+ */
+export async function initDatabase(db: Db): Promise<void> {
+  await db.execAsync('PRAGMA foreign_keys = ON');
+  await migrate(db);
 }

@@ -5,20 +5,21 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
-import { DATABASE_NAME, migrate } from '@/data/db';
+import { DATABASE_NAME, initDatabase as initDb } from '@/data/db';
 
 SplashScreen.preventAutoHideAsync();
 
 // Corre una sola vez al abrir la base, antes de dibujar nada.
 async function initDatabase(db: SQLiteDatabase) {
-  // WAL hace las escrituras mas rapidas y evita bloqueos de lectura.
+  // WAL hace las escrituras mas rapidas y evita bloqueos de lectura. Se
+  // queda aqui, no en data/db.ts: es un ajuste de rendimiento sobre archivo
+  // real, y las bases :memory: que usan las pruebas ni lo soportan.
   await db.execAsync("PRAGMA journal_mode = 'wal'");
-  // foreign_keys es por conexion y SQLite no lo persiste: hay que activarlo
-  // en cada apertura, no en cada migracion. Sin esto, ON DELETE SET NULL no
-  // se aplica y borrar un ambito dejaria sus archivos apuntando a un id que
-  // ya no existe en vez de quedar sin ambito.
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await migrate(db);
+  // foreign_keys (por conexion, no persiste) y migrate() viven en
+  // data/db.ts como initDatabase(), compartida con las pruebas, para que
+  // no haya una segunda copia del pragma que se pueda desincronizar de
+  // esta.
+  await initDb(db);
 }
 
 export default function TabLayout() {
