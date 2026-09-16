@@ -8,6 +8,8 @@
 
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { extensionFromMimeType } from './mime';
+
 const LIBRARY_FOLDER = 'library';
 
 /**
@@ -97,7 +99,17 @@ export function existsInLibrary(diskName: string): boolean {
  * permiso de lectura que le dieron viaja con el objeto.
  */
 export async function saveToLibrary(picked: PickedFile): Promise<string> {
-  const extension = picked.file.extension || extensionOf(picked.name);
+  // `File.pickFileAsync` (ver el comentario de arriba) apunta a una copia
+  // temporal cuyo nombre no trae extension: `picked.file.extension` sale
+  // vacio y `picked.name` (el `file.name` de esa copia) no tiene punto del
+  // que sacarle nada a `extensionOf`. Irónicamente, expo-document-picker -el
+  // que abandonamos porque Expo Go no dejaba leer sus archivos- sí conservaba
+  // el nombre original: cambiamos el nombre por el permiso de lectura. Lo que
+  // sí sobrevive es el mimeType, porque este modulo lo lee del content
+  // provider y no de la ruta, asi que es la ultima red antes de guardar el
+  // archivo sin ninguna extension.
+  const extension =
+    picked.file.extension || extensionOf(picked.name) || extensionFromMimeType(picked.mimeType);
   const diskName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`;
   const destination = new File(libraryDirectory(), diskName);
 
