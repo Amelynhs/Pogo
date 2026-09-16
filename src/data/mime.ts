@@ -39,31 +39,56 @@ const MIME_TO_EXTENSION: Record<string, string> = {
 };
 
 /**
+ * Un subtipo de mimeType que SI se puede tomar tal cual como extension: solo
+ * letras y digitos en minuscula, de 1 a 5 caracteres. Es una lista de
+ * permitidos, no de prohibidos, a proposito: una lista de prohibidos tiene
+ * que anticipar cada valor malo que exista (y aun asi se le escapan cosas,
+ * ver el historial de este archivo); una de permitidos solo tiene que
+ * describir como se ve una extension de verdad. Esta la describe: rechaza
+ * "octet-stream" (tiene guion — es el valor que Android devuelve cuando NO
+ * sabe que es el archivo, estampar una extension ahi seria mentir por el
+ * sistema), cualquier "vnd.*" o "x-*" (tienen punto o guion), cualquier
+ * "*+xml" (tiene '+'), cualquier resto de parametros mal cortado (tendria
+ * espacios o '=') y cualquier cosa demasiado larga para ser una extension
+ * real. Y sigue aceptando las genuinas: "bmp", "csv", "png", "mp3".
+ */
+const SAFE_SUBTYPE = /^[a-z0-9]{1,5}$/;
+
+/**
+ * Normaliza un mimeType para buscarlo: recorta espacios, pasa a minusculas
+ * y descarta parametros (`; charset=utf-8` y similares). Sin esto,
+ * "IMAGE/JPEG" o "text/plain; charset=utf-8" no encontraban su entrada en
+ * la tabla (que esta en minuscula y sin parametros) y caian a la
+ * heuristica -o peor, arrastraban el `;`/`=`/espacio hasta el resultado.
+ */
+function normalizeMimeType(mimeType: string): string {
+  return mimeType.split(';')[0].trim().toLowerCase();
+}
+
+/**
  * Deriva la extension (con punto) a partir de un mimeType, o '' si no se
  * puede saber con confianza.
  *
- * Primero busca en la tabla de arriba. Si no esta, aplica una heuristica
- * limitada a proposito: un subtipo sin '+' (como el "xml" de "+xml"), sin
- * '.' (como el "ms-excel" de vendor trees con puntos) y sin el prefijo
- * "vnd." (formatos especificos de un fabricante que no suelen coincidir con
- * su extension real) casi siempre ES su extension, por ejemplo
- * "image/png" -> ".png". Fuera de esos casos devuelve '': una extension
+ * Primero busca en la tabla de arriba, ya normalizado. Si no esta, aplica
+ * la heuristica de `SAFE_SUBTYPE` (ver su comentario) solo sobre el
+ * subtipo normalizado. Fuera de esos casos devuelve '': una extension
  * equivocada es peor que ninguna, porque el sistema operativo terminaria
  * mintiendo sobre el tipo del archivo.
  */
 export function extensionFromMimeType(mimeType: string | null): string {
   if (!mimeType) return '';
 
-  const known = MIME_TO_EXTENSION[mimeType];
+  const normalized = normalizeMimeType(mimeType);
+  if (!normalized) return '';
+
+  const known = MIME_TO_EXTENSION[normalized];
   if (known) return known;
 
-  const slash = mimeType.indexOf('/');
+  const slash = normalized.indexOf('/');
   if (slash < 0) return '';
 
-  const subtype = mimeType.slice(slash + 1);
-  if (!subtype || subtype.includes('+') || subtype.includes('.') || subtype.startsWith('vnd.')) {
-    return '';
-  }
+  const subtype = normalized.slice(slash + 1);
+  if (!SAFE_SUBTYPE.test(subtype)) return '';
 
   return `.${subtype}`;
 }
